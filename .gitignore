@@ -1,0 +1,47 @@
+# ---- Patient data: NEVER commit ----
+*.xlsx
+*.xls
+*.csv
+*.sav
+*.dta
+data/
+raw_data/
+
+# ---- Trained models & artefacts ----
+*.pkl
+*.joblib
+*.h5
+
+# ---- Generated outputs ----
+*_Results/
+Paper_*/
+FINAL_*/
+Honest_*/
+*.png
+*.log
+
+# ---- Secrets ----
+.env
+.streamlit/secrets.toml
+*secret*
+*token*
+
+# ---- Documents ----
+*.docx
+*.doc
+*.pdf
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+env/
+*.egg-info/
+.ipynb_checkpoints/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
