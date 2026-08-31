@@ -2,11 +2,12 @@
 """
 MAKALE — 3 PRIMARY OFFLINE MODEL (nihai analiz)
 ================================================
-Tasarım kararları:
-  • Ortak değişken seti (tüm outcome'larda aynı)
-  • Secondary/eskalasyon modelleri dışlandı (56 hastanın yalnızca 2'si eskale olmuştur)
-  • ex = hastane-içi mortalite
-  • entübe/svk/tpn/inotrop bu betikte değerlendirilir (t0'da bilinen değişkenler)
+Tasarim kararlari:
+  • Ortak degisken seti (tum outcome'larda ayni)
+  • Bebek basina TEK satir (indeks kur) — veri seti tedavi epizodu bazinda
+  • PNA_t0 dogum tarihinden hesaplanir
+  • ex = hastane-ici mortalite
+  • Kur sayisi modele degisken olarak VERILMEZ (yalnizca raporlanir)
 
 Üretilen: her outcome için şampiyon algoritma, out-of-fold (OOF) CV-AUC + bootstrap %95 GA,
 Youden optimal eşik, duyarlılık/özgüllük, Feature Importance, kalibrasyon eğrisi, confusion matrix.
@@ -49,7 +50,7 @@ OUT = "Paper_Primary_Models"
 os.makedirs(os.path.join(OUT, "models"), exist_ok=True)
 R = 230
 
-# Ortak değişken seti. TPN kohortta sabit olduğu için otomatik düşer.
+# Ortak set (onaylı). TPN sabit olduğu için otomatik düşecek.
 FULL = ['gebelikhaftası','cinsiyeti','apgar5','apgar1','dogumagirligi','cerrahi','idrarsondasi',
         'PNA_t0','crp1','proc1','entübe','svk','tpn','inotrop_severity']
 NOSEV = ['gebelikhaftası','cinsiyeti','apgar5','apgar1','dogumagirligi','cerrahi','idrarsondasi',
@@ -58,16 +59,76 @@ NOSEV = ['gebelikhaftası','cinsiyeti','apgar5','apgar1','dogumagirligi','cerrah
 TARGETS = [("Mortalite", 'ex'), ("BPD", 'BPD'), ("ROP", 'rop')]
 
 
-def load_df():
+def load_df(dedup=True):
+    """Kohortu yukler ve bebek basina TEK satira indirger.
+
+    Veri seti tedavi EPIZODU bazindadir: ayni bebegin birden fazla antifungal
+    kuru ayri satir olarak girilmistir (9 bebek, 20 satir). Model icin bebek
+    basina tek satir (indeks = ilk kur) kullanilir; boylece capraz dogrulamada
+    ayni bebegin hem egitim hem test katmanina dusmesi (veri sizintisi) onlenir.
+    """
     df = pd.read_excel('micafunginson.xlsx', na_values=['#BOŞ!', '#NULL!'])
-    for c in ['kullandıgıtarih1', 'takibegirdigitarih', 'taburculuktarihi']:
+    df['excel_satir'] = df.index + 2   # kaynak dosyada izlenebilirlik icin
+
+    # --- Cinsiyet kodu duzeltmeleri (klinik ekip teyidi; 1 = kiz, 2 = erkek) ---
+    for excel_row, correct in {5: 2, 16: 2, 41: 1, 54: 2, 60: 1}.items():
+        idx = excel_row - 2
+        if idx in df.index:
+            df.loc[idx, 'cinsiyeti'] = correct
+
+    for c in ['dogumtarihi', 'kullandıgıtarih1', 'bittiğitarih1',
+              'takibegirdigitarih', 'taburculuktarihi']:
         df[c] = pd.to_datetime(df[c], errors='coerce')
-    df['PNA_t0'] = (df['kullandıgıtarih1'] - df['takibegirdigitarih']).dt.days
-    df = df[(df['PNA_t0'] >= 0) & (df['PNA_t0'] <= 200)]
+
+    # --- Tarih yazim hatalari (klinik ekip teyidi) ---
+    for excel_row, col, val in [
+        (49, 'bittiğitarih1',    '2018-08-11'),   # yil 2019 -> 2018
+        (50, 'kullandıgıtarih1', '2018-12-25'),   # yil 2019 -> 2018
+        (55, 'dogumtarihi',      '2017-05-21'),   # yil 2018 -> 2017
+    ]:
+        idx = excel_row - 2
+        if idx in df.index:
+            df.loc[idx, col] = pd.Timestamp(val)
+
+    # --- Bebek kimligi; isimsiz satirlari (bos kayit) dusur ---
+    df['hasta_id'] = df['bebekadi'].astype(str).str.strip().str.upper()
+    df = df[df['hasta_id'] != 'NAN'].copy()
+
+    # Hasta duzeyindeki alanlari ayni bebegin diger satirlarindan tamamla
+    for c in ['dogumtarihi', 'takibegirdigitarih', 'taburculuktarihi']:
+        df[c] = df.groupby('hasta_id')[c].transform(lambda s: s.ffill().bfill())
+
+    # --- PNA_t0 = antifungal baslangici - DOGUM (klinik olarak dogru tanim).
+    # Yatis referansi, disaridan antifungal alarak sevk edilen bebeklerde
+    # negatif deger uretiyordu.
+    df['PNA_t0'] = (df['kullandıgıtarih1'] - df['dogumtarihi']).dt.days
     df['time'] = (df['taburculuktarihi'] - df['kullandıgıtarih1']).dt.days
-    df = df[df['time'] > 0]
     df['inotrop_severity'] = df['ilkhaftainotrop'].map({0: 0, 1: 1, 2: 1, 3: 2}).fillna(0)
-    return df
+
+    # Kur sayisi: yalnizca raporlama icin (modele DEGISKEN olarak verilmez)
+    df['kur_sayisi'] = df.groupby('hasta_id')['hasta_id'].transform('size')
+
+    # --- Bebek basina tek satir: ilk kur, SATIR BUTUN olarak.
+    # crp1/proc1 her kurun kendi baslangic degeridir; groupby.first() sutun
+    # bazinda ilk dolu degeri alip kurleri karistiracagi icin kullanilmaz.
+    df = df.sort_values(['hasta_id', 'kullandıgıtarih1'], kind='mergesort')
+
+    if dedup:
+        # MODEL KOHORTU: bebek basina tek satir (indeks kur)
+        out = df.drop_duplicates(subset='hasta_id', keep='first')
+        out = out[(out['PNA_t0'] >= 0) & (out['PNA_t0'] <= 200) & (out['time'] > 0)]
+        return out.reset_index(drop=True)
+
+    # EPIZOT DUZEYI: model kohortundaki bebeklerin TUM antifungal kurleri.
+    # Tedavi tanimlayici tablolari (hangi ilac, kac gun) icin kullanilir.
+    ids = set(load_df(dedup=True)['hasta_id'])
+    return df[df['hasta_id'].isin(ids)].reset_index(drop=True)
+
+
+def champion_of(name):
+    """Leaderboard CSV'sinden o outcome'un NOSEV sampiyonunu okur.
+    Sampiyon veri degistikce degisebildigi icin alt betiklerde sabit yazilmaz."""
+    return pd.read_csv(os.path.join(OUT, f"Leaderboard_{name}_NOSEV.csv")).iloc[0]['Algorithm']
 
 
 def prep(df, target, feats):
@@ -165,11 +226,21 @@ def championship(name, setname, X, y):
     return lb, store, bps
 
 
+    # Klinik karar: ROP bir tarama sorusudur ve hicbir vaka kacirilmamalidir.
+# Bu outcome'larda esik, %100 duyarlilik veren EN YUKSEK esik olarak secilir
+# (Youden J yerine). Diger outcome'larda Youden J kullanilir.
+FULL_SENSITIVITY_OUTCOMES = {"ROP"}
+
+
 def artifacts(name, X, y, champ, oof, tag):
     yt, yp = oof
     fpr, tpr, thr = roc_curve(yt, yp)
-    k = int(np.argmax(tpr - fpr))
-    t = float(thr[k])
+    if name in FULL_SENSITIVITY_OUTCOMES:
+        cand = [th for th, tr in zip(thr, tpr) if tr >= 1.0 and np.isfinite(th)]
+        t = float(max(cand)) if cand else 0.0
+    else:
+        k = int(np.argmax(tpr - fpr))
+        t = float(thr[k])
     if not np.isfinite(t): t = 1.0
     pred = (yp >= t).astype(int)
     tn, fp, fn, tp = confusion_matrix(yt, pred, labels=[0, 1]).ravel()

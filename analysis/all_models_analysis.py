@@ -23,9 +23,7 @@ import paper_primary_models as P
 OUT = "Paper_Figures_Tables"
 os.makedirs(OUT, exist_ok=True)
 
-OUTCOMES = [("Mortality", 'ex', "K-Nearest Neighbor"),
-            ("BPD", 'BPD', "ExtraTrees"),
-            ("ROP", 'rop', "Random Forest")]
+OUTCOMES = [("Mortality", 'ex', "Mortalite"), ("BPD", 'BPD', "BPD"), ("ROP", 'rop', "ROP")]
 
 
 def metrics_at_youden(yt, yp):
@@ -46,7 +44,8 @@ def main():
     all_rows = []
     oof_by_outcome = {}
 
-    for en, tgt, champ in OUTCOMES:
+    for en, tgt, _tr in OUTCOMES:
+        champ = P.champion_of(_tr)
         X, y, _ = P.prep(df, tgt, P.NOSEV)
         oof = {}
         rows = []
@@ -74,7 +73,8 @@ def main():
 
     # ROC — 10 algoritma, outcome başına panel
     fig, axes = plt.subplots(1, 3, figsize=(18, 5.6))
-    for ax, (en, tgt, champ) in zip(axes, OUTCOMES):
+    for ax, (en, tgt, _tr) in zip(axes, OUTCOMES):
+        champ = P.champion_of(_tr)
         oof, _ = oof_by_outcome[en]
         order = sorted(oof.keys(), key=lambda a: oof[a][2], reverse=True)
         colors = cm.tab10(np.linspace(0, 1, 10))

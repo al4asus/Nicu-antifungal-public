@@ -38,25 +38,27 @@ import paper_primary_models as P
 OUT = "Paper_Figures_Tables"
 os.makedirs(OUT, exist_ok=True)
 
-CHAMPS = [("Mortality", 'ex', "K-Nearest Neighbor", "Mortalite"),
-          ("BPD", 'BPD', "ExtraTrees", "BPD"),
-          ("ROP", 'rop', "Random Forest", "ROP")]
+CHAMPS = [('Mortality','ex','Mortalite'),('BPD','BPD','BPD'),('ROP','rop','ROP')]
 COLORS = {"Mortality": "#1f77b4", "BPD": "#d95f0e", "ROP": "#2ca02c"}
 
 
 # ---------------- TABLO 1: Demografik ----------------
+# NOT: 'time' (takip suresi) TABLO 1'DEN CIKARILDI - modele verilmeyen bir degisken
+# ve olum sonrasi kisa gorunmesi beklenen bir sonuc; risk faktoru olarak yanlis okunuyordu.
 CONT = [('gebelikhaftası', 'Gestational age, weeks'), ('dogumagirligi', 'Birth weight, g'),
         ('apgar1', 'Apgar score at 1 min'), ('apgar5', 'Apgar score at 5 min'),
         ('PNA_t0', 'Age at antifungal initiation, days'), ('crp1', 'First CRP, mg/L'),
-        ('proc1', 'First procalcitonin, ng/mL'), ('time', 'Follow-up (treatment start to exit), days')]
+        ('proc1', 'First procalcitonin, ng/mL')]
 # (sütun, etiket, "pozitif" kabul edilen kod)
-# NOT: cinsiyeti veride 1/2 olarak kodlu (0/1 DEĞİL). 1 vs 2'nin hangisi erkek olduğu
-# veri sözlüğünden teyit edilmeli; şimdilik kod-2 raporlanıyor.
-CAT = [('cinsiyeti', 'Sex — code 2 (mapping to be confirmed)', 2),
+# Cinsiyet kodlamasi klinik ekipce teyit edildi: 1 = kiz, 2 = erkek.
+CAT = [('cinsiyeti', 'Male sex', 2),
        ('cerrahi', 'Surgery', 1), ('idrarsondasi', 'Urinary catheter', 1),
        ('entübe', 'Intubation', 1), ('svk', 'Central venous catheter', 1),
        ('tpn', 'Total parenteral nutrition', 1),
-       ('inotrop_any', 'Inotrope support (first week)', 1)]
+       ('inotrop_any', 'Inotrope support (first week)', 1),
+       ('flukanazolprofilaksisi', 'Fluconazole prophylaxis', 1),
+       ('steroidkullanimi', 'Postnatal systemic steroid', 1),
+       ('cokluantibiyotikkullanimi', 'Multiple antibiotic courses', 1)]
 
 
 def med_iqr(s):
@@ -74,6 +76,7 @@ def table1(df):
     df = df.copy()
     df['inotrop_any'] = (df['inotrop_severity'] > 0).astype(int)
     alive, dead = df[df['ex'] == 0], df[df['ex'] == 1]
+    C_ALL, C_ALIVE, C_DEAD = (f'Overall (n={len(df)})', f'Survived (n={len(alive)})', f'Died (n={len(dead)})')
     rows = []
     for col, label in CONT:
         try:
@@ -81,8 +84,8 @@ def table1(df):
             ps = f"{p:.3f}" if p >= 0.001 else "<0.001"
         except Exception:
             ps = "—"
-        rows.append({'Characteristic': label, 'Overall (n=56)': med_iqr(df[col]),
-                     'Survived (n=30)': med_iqr(alive[col]), 'Died (n=26)': med_iqr(dead[col]), 'p': ps})
+        rows.append({'Characteristic': label, C_ALL: med_iqr(df[col]),
+                     C_ALIVE: med_iqr(alive[col]), C_DEAD: med_iqr(dead[col]), 'p': ps})
     for col, label, pos in CAT:
         if col not in df.columns: continue
         try:
@@ -94,12 +97,12 @@ def table1(df):
             ps = f"{p:.3f}" if p >= 0.001 else "<0.001"
         except Exception:
             ps = "—"
-        rows.append({'Characteristic': label, 'Overall (n=56)': n_pct(df[col], pos),
-                     'Survived (n=30)': n_pct(alive[col], pos), 'Died (n=26)': n_pct(dead[col], pos), 'p': ps})
+        rows.append({'Characteristic': label, C_ALL: n_pct(df[col], pos),
+                     C_ALIVE: n_pct(alive[col], pos), C_DEAD: n_pct(dead[col], pos), 'p': ps})
     # Outcomes
     for col, label in [('ex', 'In-hospital mortality'), ('BPD', 'BPD'), ('rop', 'ROP')]:
-        rows.append({'Characteristic': label + ' (outcome)', 'Overall (n=56)': n_pct(df[col]),
-                     'Survived (n=30)': '—', 'Died (n=26)': '—', 'p': '—'})
+        rows.append({'Characteristic': label + ' (outcome)', C_ALL: n_pct(df[col]),
+                     C_ALIVE: '—', C_DEAD: '—', 'p': '—'})
     return pd.DataFrame(rows)
 
 
@@ -151,13 +154,18 @@ def main():
     print("Tablo 1 yazildi.", flush=True)
 
     data = {}
-    for en, tgt, champ, tr in CHAMPS:
+    for en, tgt, tr in CHAMPS:
+        champ = P.champion_of(tr)
         X, y, yt, yp = get_oof(df, tgt, champ)
         pipe, est = fit_final(X, y, champ)
         imp, method = importance(pipe, est, X, y)
         lo, hi = P.boot_ci(yt, yp)
         fpr, tpr, thr = roc_curve(yt, yp)
-        k = int(np.argmax(tpr - fpr)); t = float(thr[k])
+        if en in P.FULL_SENSITIVITY_OUTCOMES:
+            cand = [th for th, tr in zip(thr, tpr) if tr >= 1.0 and np.isfinite(th)]
+            t = float(max(cand)) if cand else 0.0
+        else:
+            k = int(np.argmax(tpr - fpr)); t = float(thr[k])
         if not np.isfinite(t): t = 1.0
         data[en] = dict(X=X, y=y, yt=yt, yp=yp, champ=champ, auc=roc_auc_score(yt, yp),
                         lo=lo, hi=hi, thr=t, imp=imp, method=method, feats=list(X.columns))
@@ -165,7 +173,8 @@ def main():
 
     # ---- Tablo 3: Variable importance ----
     rows = []
-    for en, tgt, champ, tr in CHAMPS:
+    for en, tgt, tr in CHAMPS:
+        champ = P.champion_of(tr)
         d = data[en]
         order = np.argsort(d['imp'])[::-1]
         tot = d['imp'].sum()
@@ -181,12 +190,12 @@ def main():
     perf = [{'Outcome': en, 'n': len(data[en]['y']), 'events': int(data[en]['y'].sum()),
              'Model': data[en]['champ'], 'AUC': round(data[en]['auc'], 3),
              'CI_low': round(data[en]['lo'], 3), 'CI_high': round(data[en]['hi'], 3),
-             'Threshold': round(data[en]['thr'], 3)} for en, _, _, _ in CHAMPS]
+             'Threshold': round(data[en]['thr'], 3)} for en, _, _ in CHAMPS]
     pd.DataFrame(perf).to_csv(os.path.join(OUT, "Table2_Performance.csv"), index=False, encoding='utf-8-sig')
 
     # ---- Figür 1: ROC ----
     plt.figure(figsize=(6.5, 6))
-    for en, _, _, _ in CHAMPS:
+    for en, _, _ in CHAMPS:
         d = data[en]
         fpr, tpr, _ = roc_curve(d['yt'], d['yp'])
         plt.plot(fpr, tpr, lw=2, color=COLORS[en],
@@ -199,7 +208,7 @@ def main():
 
     # ---- Figür 2: Kalibrasyon ----
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.6))
-    for ax, (en, _, _, _) in zip(axes, CHAMPS):
+    for ax, (en, _, _) in zip(axes, CHAMPS):
         d = data[en]
         try:
             fpos, mpred = calibration_curve(d['yt'], d['yp'], n_bins=5, strategy='quantile')
@@ -214,7 +223,7 @@ def main():
 
     # ---- Figür 3: Confusion matrix ----
     fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))
-    for ax, (en, _, _, _) in zip(axes, CHAMPS):
+    for ax, (en, _, _) in zip(axes, CHAMPS):
         d = data[en]
         pred = (d['yp'] >= d['thr']).astype(int)
         cm = confusion_matrix(d['yt'], pred, labels=[0, 1])
@@ -233,7 +242,7 @@ def main():
     # ---- Figür 4: DCA ----
     ths = np.linspace(0.01, 0.95, 190)
     fig, axes = plt.subplots(1, 3, figsize=(14, 4.6))
-    for ax, (en, _, _, _) in zip(axes, CHAMPS):
+    for ax, (en, _, _) in zip(axes, CHAMPS):
         d = data[en]
         nbm, nba = net_benefit(d['yt'], d['yp'], ths)
         prev = d['yt'].mean()
@@ -250,7 +259,7 @@ def main():
 
     # ---- Figür 5: Variable importance ----
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    for ax, (en, _, _, _) in zip(axes, CHAMPS):
+    for ax, (en, _, _) in zip(axes, CHAMPS):
         d = data[en]
         o = np.argsort(d['imp'])
         ax.barh([d['feats'][i] for i in o], [d['imp'][i] for i in o], color=COLORS[en])

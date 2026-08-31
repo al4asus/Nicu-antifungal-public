@@ -4,7 +4,7 @@ HER ALGORİTMA İÇİN AYRI GÖRSEL (eski Results klasör formatı)
 ============================================================
 Her outcome (mortalite/BPD/ROP, nihai 10-değişkenli set) için, 10 algoritmanın
 HER BİRİ ayrı ayrı:  Detailed_ROC_*, CM_* (confusion matrix), Calibration_*
-Katman-dışı (OOF) tahminlerden. Çıktılar ayrı bir parent klasöre yazılır.
+Katman-dışı (OOF) tahminlerden. Eski klasörleri bozmamak için yeni parent klasör.
 Dosya adı biçimi:  <Tip>_<Algoritma>_<ModelSuffix>.png
 """
 import sys
@@ -28,7 +28,9 @@ OUTCOMES = [
     ("BPD",       'BPD', "BPD_Primary_Results", "BPD_Primary"),
     ("ROP",       'rop', "ROP_Primary_Results", "ROP_Primary"),
 ]
-CHAMP = {"Mortality": "K-Nearest Neighbor", "BPD": "ExtraTrees", "ROP": "Random Forest"}
+CHAMP = {"Mortality": P.champion_of("Mortalite"),
+         "BPD": P.champion_of("BPD"),
+         "ROP": P.champion_of("ROP")}
 
 
 def safe(algo):

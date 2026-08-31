@@ -2,8 +2,8 @@
 """
 NİHAİ MAKALE MODELLERİ — 10 değişkenli (severity'siz) set
 =========================================================
-Erken ağırlık göstergeleri (entübe/svk/tpn/inotrop) nihai modellerden çıkarılmıştır:
-duyarlılık analizinde üç sonucun da hepsinde ayrım gücünü düşürmüşlerdir.
+Erken ağırlık göstergeleri (entübe/svk/tpn/inotrop) nihai modellerden çıkarılmıştır;
+"denendi, katkı sağlamadı" olarak raporlanacak.
 
 Nihai set (10): gebelikhaftası, cinsiyeti, apgar5, apgar1, dogumagirligi,
                 cerrahi, idrarsondasi, PNA_t0, crp1, proc1
@@ -22,16 +22,13 @@ from sklearn.metrics import roc_auc_score
 import paper_primary_models as P
 
 # NOSEV şampiyonları (paper_primary_models.py çıktısından)
-CHAMPS = [
-    ("Mortalite", 'ex',  "K-Nearest Neighbor"),
-    ("BPD",       'BPD', "ExtraTrees"),
-    ("ROP",       'rop', "Random Forest"),
-]
+CHAMPS = [('Mortalite','ex'),('BPD','BPD'),('ROP','rop')]
 
 def main():
     df = P.load_df()
     rows = []
-    for name, tgt, champ in CHAMPS:
+    for name, tgt in CHAMPS:
+        champ = P.champion_of(name)
         X, y, dropped = P.prep(df, tgt, P.NOSEV)
         mdl, prm = P.build_models()[champ]
         yt, yp, bp = P.run_cv(X, y, mdl, prm)
