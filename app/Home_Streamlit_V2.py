@@ -66,7 +66,7 @@ def load_models(meta):
 try:
     META, SOURCE = load_meta()
     MODELS = load_models(META)
-except Exception as exc:                                    # noqa: BLE001
+except Exception as exc:
     st.error(
         "Model files could not be loaded. In deployment the calculator reads them from the "
         "private model repository, which requires GITHUB_TOKEN to be set in the app secrets. "

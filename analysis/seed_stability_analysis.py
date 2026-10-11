@@ -1,21 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Cok-tohumlu kararlilik analizi (multi-seed stability analysis).
+"""Cok-tohumlu kararlilik analizi.
 
-Amac: Bildirilen AUC'lerin ve sampiyon algoritma secimlerinin ne kadari
-gercek sinyal, ne kadari tek bir rastgele bolunmenin sansi?
+Ana analiz tek bir tohuma bagli (paper_primary_models.R = 230): katman
+bolunmesi, SMOTE'un urettigi ornekler, hiperparametre aramasi ve
+algoritmalarin kendi rastgeleligi hep ondan geliyor. n=49'da bunun sonucu ne
+kadar oynattigini olcmek icin ayni pipeline farkli tohumlarla tekrarlanir.
 
-Ana analizde her sey tek bir tohuma (paper_primary_models.R = 230) bagli:
-  1. 10-katli capraz dogrulamanin bolunmesi
-  2. SMOTE'un urettigi sentetik ornekler
-  3. RandomizedSearchCV'nin denedigi 25 hiperparametre kombinasyonu
-  4. Algoritmalarin kendi ic rastgeleligi (random_state)
-
-Bu betik ayni pipeline'i N farkli tohumla tekrar eder ve iki dagilim raporlar:
-  (a) Sampiyon AUC  - her tohumda kazanan algoritmanin AUC'si
-  (b) Sabit model AUC - makalede bildirilen algoritmanin AUC'si (asil onemli olan)
-
-ANA ANALIZI DEGISTIRMEZ. Ciktilar Seed_Stability/ altina yazilir; makaleye
-duyarlilik analizi olarak eklenir.
+Her tohumda 10 algoritma yeniden egitilir; kazanan algoritma ve tum AUC'ler
+kaydedilir. Ciktilar Seed_Stability/ altina yazilir, ana analize dokunulmaz.
 """
 import os
 import sys

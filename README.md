@@ -66,6 +66,7 @@ analysis/
   finalize_paper_models.py       Final ten-variable models: threshold, importance, calibration
   paper_figures_tables.py        Tables 1-3 and Figures 1-5 (incl. decision curve analysis)
   all_models_analysis.py         Full comparison of all ten algorithms
+  sensitivity_analyses.py        Mortality sensitivity analyses reported in Table 3
   seed_stability_analysis.py     Repeats the entire pipeline with 20 random seeds
   seed_stability_report.py       Summary tables and figure for the seed-stability analysis
   per_algorithm_figures.py       Per-algorithm ROC / confusion matrix / calibration

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Seed_Stability/seed_results_long.csv'den ozet tablolari ve figuru uretir.
+"""seed_results_long.csv'den ozet tablolar ve figur uretir.
 
-seed_stability_analysis.py'den ayri tutulmustur cunku:
-  - uzun kosuyu tekrarlamadan raporlama bicimi degistirilebilsin,
-  - referans cizgisi ANA ANALIZIN bildirilen AUC'si olsun.
-Onemli: seed_stability_analysis.py SMOTE'u da tohuma bagladigi icin (ana analizde
-SMOTE sabit 42'dir) tohum=230 kosusu ana analizle birebir ayni degildir; bu yuzden
-referans deger FINAL_PAPER_MODELS.csv'den okunur.
+Koşudan ayri tutuldu ki raporlama bicimi degistiginde 70 dakikalik analiz
+bastan calistirilmasin.
+
+Figurdeki referans cizgisi FINAL_PAPER_MODELS.csv'den okunur. Kararlilik
+kosusu SMOTE'u da tohuma bagladigi icin (ana analizde sabit 42) tohum=230
+satiri ana analizle birebir ayni degil.
 """
 import os
 

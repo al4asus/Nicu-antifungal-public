@@ -1,23 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Hesaplayiciya (Streamlit) gidecek modelleri disa aktarir.
+"""Hesaplayiciya gidecek modelleri paketler.
 
-ONEMLI: Bu betik model EGITMEZ. Makalede raporlanan modellerin TA KENDISINI
-(Paper_Primary_Models/models/*_FINAL10.pkl) ve makalede raporlanan esikleri
-(FINAL_PAPER_MODELS.csv) paketler. Boylece hesaplayici ile makale ayni modeli
-tanimlar; bu, projenin bastan beri tasidigi en buyuk tutarsizligin cozumudur.
+Burada model egitilmez. Paper_Primary_Models/models altindaki fitted
+pipeline'lar ve FINAL_PAPER_MODELS.csv'deki esikler oldugu gibi kopyalanir,
+boylece hesaplayici makaledeki modellerin aynisini calistirir.
 
-Eski surumun duzeltilen hatalari:
-  1. Esik, modelin KENDI EGITIM VERISI uzerinden hesaplaniyordu. Agac
-     topluluklari egitim verisini neredeyse kusursuz ezberledigi icin
-     olasiliklar 0/1'e yigiliyor ve Youden esigi 1.0 cikabiliyordu; ROP
-     hesaplayicisinin hicbir bebegi "riskli" dememesinin sebebi buydu.
-     Artik esikler katman-disi (out-of-fold) tahminlerden gelir.
-  2. Sampiyon algoritmalar sabit yazilmisti (ExtraTrees). Artik makalenin
-     sampiyonlari kullanilir: Gradient Boosting / Random Forest / Random Forest.
-  3. Modeller eski, epizot bazli (sizintili) kohortla egitilmisti. Artik
-     hasta duzeyindeki n=49 kohortundan gelirler.
-  4. Degisken seti 8'di; dogum agirligi ve Apgar-1 yoktu. Artik 10 degisken.
-  5. Secondary (eskalasyon) modelleri kaldirildi; makalede de kapatilmislardi.
+Esikler katman-disi tahminlerden gelir; modelin kendi egitim verisi uzerinden
+hesaplanan esik, agac topluluklarinda anlamsiz degerler uretiyor.
+
+Cikti: streamlit_models/ (3 pkl + model_meta.json)
 """
 import json
 import os

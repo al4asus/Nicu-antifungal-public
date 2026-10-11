@@ -2,8 +2,8 @@
 """
 SECONDARY modeller için her-algoritma görselleri (keşifsel/ek — makaleye girmiyor).
 Feature set = nihai 10 baseline + 4 eskalasyon değişkeni (sabit olanlar otomatik düşer).
-NOT: Kohortta eskalasyon bilgisi ayri satirlar halinde tutuldugu icin bu sutunlar ~sabittir;
-bu modeller Primary'nin neredeyse aynısıdır. yalnızca bütünlük için üretilmiştir.
+NOT: Kohortta yalnızca 2/56 hasta eskale olduğu için eskalasyon değişkenleri ~sabittir;
+bu modeller Primary'nin neredeyse aynısı çıkıyor. Talep üzerine yine de üretildi.
 """
 import sys
 try:

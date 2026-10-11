@@ -45,7 +45,7 @@ except Exception:
     HAS_XGB = False
 
 warnings.filterwarnings('ignore')
-os.chdir(r"C:\Users\hasan\Documents\medical-research")
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 OUT = "Paper_Primary_Models"
 os.makedirs(os.path.join(OUT, "models"), exist_ok=True)
 R = 230
