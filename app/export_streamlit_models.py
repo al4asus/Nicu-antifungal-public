@@ -1,103 +1,118 @@
-import pandas as pd
-import numpy as np
-import joblib
+# -*- coding: utf-8 -*-
+"""Hesaplayiciya (Streamlit) gidecek modelleri disa aktarir.
+
+ONEMLI: Bu betik model EGITMEZ. Makalede raporlanan modellerin TA KENDISINI
+(Paper_Primary_Models/models/*_FINAL10.pkl) ve makalede raporlanan esikleri
+(FINAL_PAPER_MODELS.csv) paketler. Boylece hesaplayici ile makale ayni modeli
+tanimlar; bu, projenin bastan beri tasidigi en buyuk tutarsizligin cozumudur.
+
+Eski surumun duzeltilen hatalari:
+  1. Esik, modelin KENDI EGITIM VERISI uzerinden hesaplaniyordu. Agac
+     topluluklari egitim verisini neredeyse kusursuz ezberledigi icin
+     olasiliklar 0/1'e yigiliyor ve Youden esigi 1.0 cikabiliyordu; ROP
+     hesaplayicisinin hicbir bebegi "riskli" dememesinin sebebi buydu.
+     Artik esikler katman-disi (out-of-fold) tahminlerden gelir.
+  2. Sampiyon algoritmalar sabit yazilmisti (ExtraTrees). Artik makalenin
+     sampiyonlari kullanilir: Gradient Boosting / Random Forest / Random Forest.
+  3. Modeller eski, epizot bazli (sizintili) kohortla egitilmisti. Artik
+     hasta duzeyindeki n=49 kohortundan gelirler.
+  4. Degisken seti 8'di; dogum agirligi ve Apgar-1 yoktu. Artik 10 degisken.
+  5. Secondary (eskalasyon) modelleri kaldirildi; makalede de kapatilmislardi.
+"""
 import json
-from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
-from imblearn.over_sampling import SMOTE
-from sklearn.metrics import roc_curve
-import warnings
+import os
+import shutil
+from datetime import date
 
-warnings.filterwarnings('ignore')
+import pandas as pd
 
-# 8 Dürüst Değişken (Mortalite modelindekilerle birebir örtüşen)
-HONEST_FEATURES = ['gebelikhaftası', 'cinsiyeti', 'apgar5', 'cerrahi', 'idrarsondasi', 'PNA_t0', 'crp1', 'proc1']
+import paper_primary_models as P
 
-# 4 Antifungal Eskalasyon Türevi (Secondary modeller için)
-SEC_FEATURES = ['second_antifungal_started', 'third_antifungal_started', 'antifungal_escalation', 'multiple_antifungal_lines']
+SRC = os.path.join("Paper_Primary_Models", "models")
+OUT = "streamlit_models"
 
-def get_base_df():
-    df = pd.read_excel('micafunginson.xlsx', na_values=['#BOŞ!', '#NULL!'])
-    date_cols = ['kullandıgıtarih1', 'takibegirdigitarih', 'taburculuktarihi']
-    for col in date_cols:
-        df[col] = pd.to_datetime(df[col], errors='coerce')
-    df['PNA_t0'] = (df['kullandıgıtarih1'] - df['takibegirdigitarih']).dt.days
-    df = df[(df['PNA_t0'] >= 0) & (df['PNA_t0'] <= 200)]
-    return df
+# (ic ad, disa aktarilan ad, arayuzde gorunen ad)
+MODELS = [
+    ("Mortalite", "mortality_model.pkl", "In-hospital mortality"),
+    ("BPD", "bpd_model.pkl", "Bronchopulmonary dysplasia"),
+    ("ROP", "rop_model.pkl", "Retinopathy of prematurity"),
+]
 
-def get_secondary_derivatives(df):
-    date_cols_sec = ['kullandıgıtarih2', 'kullandıgıtarih3']
-    for col in date_cols_sec:
-        df[col] = pd.to_datetime(df[col], errors='coerce')
-    df['second_antifungal_started'] = ((df['kacgunmicafungin2'].fillna(0) > 0) | (df['kullandıgıtarih2'].notna())).astype(int)
-    df['third_antifungal_started'] = ((df['kacgunkullandi3'].fillna(0) > 0) | (df['kullandıgıtarih3'].notna())).astype(int)
-    df['antifungal_escalation'] = ((df['second_antifungal_started'] == 1) | (df['third_antifungal_started'] == 1)).astype(int)
-    df['multiple_antifungal_lines'] = df['antifungal_escalation']
-    return df
+# Arayuzdeki alan tanimlari: etiket, tip, sinirlar, varsayilan
+FIELD_SPEC = {
+    'gebelikhaftası': dict(label="Gestational age (weeks)", kind="number", min=20.0, max=45.0, step=0.1, default=29.0),
+    'cinsiyeti':      dict(label="Sex", kind="choice", options={"Female": 1, "Male": 2}, default=2),
+    'apgar5':         dict(label="Apgar score at 5 minutes", kind="number", min=0.0, max=10.0, step=1.0, default=8.0),
+    'apgar1':         dict(label="Apgar score at 1 minute", kind="number", min=0.0, max=10.0, step=1.0, default=4.0),
+    'dogumagirligi':  dict(label="Birth weight (g)", kind="number", min=300.0, max=5000.0, step=10.0, default=1100.0),
+    'cerrahi':        dict(label="Surgery", kind="choice", options={"No": 0, "Yes": 1}, default=0),
+    'idrarsondasi':   dict(label="Urinary catheter", kind="choice", options={"No": 0, "Yes": 1}, default=0),
+    'PNA_t0':         dict(label="Postnatal age at antifungal initiation (days)", kind="number", min=0.0, max=200.0, step=1.0, default=25.0),
+    'crp1':           dict(label="First C reactive protein (mg/L)", kind="number", min=0.0, max=500.0, step=1.0, default=50.0),
+    'proc1':          dict(label="First procalcitonin (ng/mL)", kind="number", min=0.0, max=200.0, step=0.1, default=1.5),
+}
 
-def prep_dataset(df, target_col, features):
-    if target_col == 'BPD':
-        df['event'] = df['BPD']
-    elif target_col == 'rop':
-        df['event'] = df['rop']
 
-    df['time'] = (df['taburculuktarihi'] - df['kullandıgıtarih1']).dt.days
-    df = df[df['time'] > 0]
-    df = df.dropna(subset=[target_col])
-    
-    y = df[target_col].copy().astype(int)
-    
-    X = df[features].copy()
-    # Eksikleri medyan ile doldur
-    for c in X.columns:
-        X[c] = X[c].fillna(X[c].median())
-    
-    return X, y
+def main():
+    fin = pd.read_csv(os.path.join("Paper_Primary_Models", "FINAL_PAPER_MODELS.csv"),
+                      encoding='utf-8-sig').set_index("Outcome")
+    df = P.load_df()
 
-def train_and_export(model, X, y, filename):
-    sm = SMOTE(random_state=42)
-    Xsm, ysm = sm.fit_resample(X, y)
-    
-    model.fit(Xsm, ysm)
-    
-    y_prob = model.predict_proba(X)[:, 1]
-    fpr, tpr, thr = roc_curve(y, y_prob)
-    opt_idx = np.argmax(tpr - fpr)
-    opt_threshold = float(thr[opt_idx])
-    
-    joblib.dump(model, filename)
-    print(f"{filename} oluşturuldu. Thr: {opt_threshold}")
-    return X.columns.tolist(), opt_threshold
+    os.makedirs(OUT, exist_ok=True)
+    meta = {
+        "generated": date.today().isoformat(),
+        "source": "Paper_Primary_Models/models/*_FINAL10.pkl",
+        "cohort": {
+            "patients": int(len(df)),
+            "courses": int(len(P.load_df(dedup=False))),
+            "description": "Patient-level cohort; one row per infant (index antifungal course).",
+        },
+        "features": list(P.NOSEV),
+        "field_spec": FIELD_SPEC,
+        "models": {},
+        "notes": {
+            "thresholds": "Derived from pooled out-of-fold cross-validation predictions, not from "
+                          "the training data.",
+            "rop_threshold": "Chosen as the highest threshold that still retains 100% sensitivity, "
+                             "following the clinical decision that no case of ROP should be missed. "
+                             "In this cohort that point coincides with the Youden optimum.",
+            "mortality": "The lower bound of the confidence interval reaches chance level. This "
+                         "model is reported as a negative finding and is not suitable for clinical "
+                         "use; it is shown for research purposes only.",
+        },
+    }
 
-meta_registry = {}
-df_base = get_base_df()
-df_sec = get_secondary_derivatives(df_base.copy())
+    for name, fname, label in MODELS:
+        src = os.path.join(SRC, f"{name}_FINAL10.pkl")
+        if not os.path.exists(src):
+            raise SystemExit("bulunamadi: " + src)
+        shutil.copy2(src, os.path.join(OUT, fname))
+        r = fin.loc[name]
+        key = {"Mortalite": "mortality", "BPD": "bpd", "ROP": "rop"}[name]
+        meta["models"][key] = {
+            "file": fname,
+            "label": label,
+            "algorithm": str(r["Champion"]),
+            "threshold": float(r["threshold"]),
+            "auc": float(r["OOF_AUC"]),
+            "ci_low": float(r["CI_low"]),
+            "ci_high": float(r["CI_high"]),
+            "sensitivity": float(r["sensitivity"]),
+            "specificity": float(r["specificity"]),
+            "n": int(r["n"]),
+            "events": int(r["pos"]),
+            "clinical_use": (key != "mortality"),
+        }
+        print(f"  {fname:22s} {r['Champion']:<18s} AUC {r['OOF_AUC']:.3f} "
+              f"[{r['CI_low']:.3f}-{r['CI_high']:.3f}]  esik {r['threshold']:.3f}")
 
-print("BPD Primary İşleniyor...")
-X_bp, y_bp = prep_dataset(df_base.copy(), 'BPD', HONEST_FEATURES)
-model_bp = ExtraTreesClassifier(random_state=230, n_estimators=200, max_depth=5)
-feat_bp, thr_bp = train_and_export(model_bp, X_bp, y_bp, 'bpd_primary_model.pkl')
-meta_registry['bpd_primary'] = {'features': feat_bp, 'optimal_threshold': thr_bp}
+    with open(os.path.join(OUT, "model_meta.json"), "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2, ensure_ascii=False)
 
-print("BPD Secondary İşleniyor...")
-X_bs, y_bs = prep_dataset(df_sec.copy(), 'BPD', HONEST_FEATURES + SEC_FEATURES)
-model_bs = RandomForestClassifier(random_state=230, n_estimators=200)
-feat_bs, thr_bs = train_and_export(model_bs, X_bs, y_bs, 'bpd_secondary_model.pkl')
-meta_registry['bpd_secondary'] = {'features': feat_bs, 'optimal_threshold': thr_bs}
+    print("\nyazildi:", OUT)
+    print("kohort:", meta["cohort"]["patients"], "bebek /", meta["cohort"]["courses"], "kur")
+    print("degiskenler:", len(meta["features"]))
 
-print("ROP Primary İşleniyor...")
-X_rp, y_rp = prep_dataset(df_base.copy(), 'rop', HONEST_FEATURES)
-model_rp = ExtraTreesClassifier(random_state=230, n_estimators=200)
-feat_rp, thr_rp = train_and_export(model_rp, X_rp, y_rp, 'rop_primary_model.pkl')
-meta_registry['rop_primary'] = {'features': feat_rp, 'optimal_threshold': thr_rp}
 
-print("ROP Secondary İşleniyor...")
-X_rs, y_rs = prep_dataset(df_sec.copy(), 'rop', HONEST_FEATURES + SEC_FEATURES)
-model_rs = RandomForestClassifier(random_state=230, n_estimators=200)
-feat_rs, thr_rs = train_and_export(model_rs, X_rs, y_rs, 'rop_secondary_model.pkl')
-meta_registry['rop_secondary'] = {'features': feat_rs, 'optimal_threshold': thr_rs}
-
-with open('streamlit_meta_new.json', 'w', encoding='utf-8') as f:
-    json.dump(meta_registry, f, indent=4, ensure_ascii=False)
-    
-print("Tüm dürüst klinik modeller başarıyla export edildi!")
+if __name__ == "__main__":
+    main()

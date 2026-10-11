@@ -98,12 +98,26 @@ Python 3.10, scikit-learn 1.3.2, imbalanced-learn 0.12.3, XGBoost.
 
 ---
 
-## Configuration
+## Calculator
 
-The Streamlit app loads model files from a private repository and needs a GitHub token. **Never hard-code it.**
+`app/export_streamlit_models.py` does **not** train anything. It packages the fitted models from
+the published analysis together with the thresholds derived from out-of-fold predictions, so that
+the calculator and the paper describe the same three models.
+
+The calculator reports bronchopulmonary dysplasia and retinopathy of prematurity as clinical
+outputs. Mortality is shown as a research output only, without a risk classification, because the
+lower bound of its confidence interval reaches chance level. The escalation (secondary) models were
+removed, as they were from the manuscript.
+
+The ROP threshold is the highest value that still retains 100% sensitivity, following the clinical
+decision that no case should be missed. In this cohort that point coincides with the Youden optimum.
+
+### Configuration
+
+The app loads model files from a private repository and needs a GitHub token. **Never hard-code it.**
 
 - Streamlit Cloud: *App settings → Secrets* → `GITHUB_TOKEN = "..."`
-- Local: `export GITHUB_TOKEN=...`
+- Local: `export GITHUB_TOKEN=...`, or place the exported files in `streamlit_models/`
 
 ---
 
