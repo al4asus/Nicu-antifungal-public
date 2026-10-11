@@ -54,6 +54,7 @@ Number of antifungal courses is recorded for reporting but is **not given to the
 - **Early severity markers** (intubation, central venous catheter, TPN, first-week inotrope) added to the baseline set
 - **First-line agent**, known at treatment initiation, added as a categorical variable
 - **Treatment duration**, which is *not* known at treatment initiation and is partly determined by the outcome, added deliberately to quantify how much apparent performance is gained by violating the temporal boundary of prediction
+- **Random-seed stability**: the entire pipeline repeated with **20 different random seeds**, each reassigning the cross-validation folds, the synthetic oversampling and the hyperparameter search, and reseeding the algorithms themselves. This quantifies how much of the reported discrimination, and of the algorithm ranking, depends on a single data partition
 
 ---
 
@@ -65,6 +66,8 @@ analysis/
   finalize_paper_models.py       Final ten-variable models: threshold, importance, calibration
   paper_figures_tables.py        Tables 1-3 and Figures 1-5 (incl. decision curve analysis)
   all_models_analysis.py         Full comparison of all ten algorithms
+  seed_stability_analysis.py     Repeats the entire pipeline with 20 random seeds
+  seed_stability_report.py       Summary tables and figure for the seed-stability analysis
   per_algorithm_figures.py       Per-algorithm ROC / confusion matrix / calibration
   per_algorithm_secondary.py     Same, for exploratory escalation models
   drug_usage_tables.py           Antifungal agent, duration and exposure tables
